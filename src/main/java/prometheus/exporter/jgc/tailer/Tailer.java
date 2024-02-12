@@ -41,6 +41,7 @@ public class Tailer {
     private final LineBuffer lineBuffer;
     private final RateLimiter limiter;
     private long lastModified;
+    private Long filePointer;
 
     public Tailer(File file, boolean seekToEnd, int batchSize, int bufferSize, int linesPerSecond) {
         this.file = Objects.requireNonNull(file);
@@ -64,18 +65,23 @@ public class Tailer {
 
     public List<String> readLines() throws IOException {
         List<String> lines = new LinkedList<>();
-        for (int i = 0; i < batchSize; ++i) {
-            String line = readLine();
-            if (line == null) {
-                break;
+        this.refresh();
+        if (this.raf.getFilePointer() < this.raf.length()) {
+            for (int i = 0; i < batchSize; ++i) {
+                String line = readLine();
+                if (line == null) {
+                    break;
+                }
+                lines.add(line);
             }
-            lines.add(line);
         }
+        this.close();
         return lines;
     }
 
     public boolean rotated() {
         try {
+            refresh();
             // inode changes
             long currInode = getInode(this.file);
             if (currInode != inode) {
@@ -90,6 +96,7 @@ public class Tailer {
                 LOG.info("{} rotated: file truncated", this.file);
                 return true;
             }
+            close();
         } catch (IOException ex) {
             LOG.error("IO error: {}", this.file, ex.getMessage());
         }
@@ -108,6 +115,7 @@ public class Tailer {
     public void close() {
         if (this.raf != null) {
             try {
+                this.filePointer = this.raf.getFilePointer();
                 this.raf.close();
             } catch (IOException ignore) {
             } finally {
@@ -121,7 +129,9 @@ public class Tailer {
             this.close();
             this.raf = new RandomAccessFile(file, "r");
             this.inode = getInode(file);
-            if (seekToEnd) {
+            if (this.filePointer != null && this.raf.length() >= this.filePointer) {
+                this.raf.seek(filePointer);
+            } else if (seekToEnd) {
                 this.raf.seek(this.raf.length());
             } else {
                 this.raf.seek(0);
