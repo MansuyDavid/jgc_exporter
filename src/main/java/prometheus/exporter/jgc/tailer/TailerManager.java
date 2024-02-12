@@ -43,6 +43,7 @@ public class TailerManager {
     private final int linesPerSecond;
     private final Predicate<Long> idleChecker;
     private final AtomicBoolean started;
+    private final int readInterval;
 
     public TailerManager(Config config, TailerListener listener) {
         this.started = new AtomicBoolean(true);
@@ -52,6 +53,7 @@ public class TailerManager {
         this.batchSize = config.getBatchSize();
         this.bufferSize = config.getBufferSize();
         this.linesPerSecond = config.getLinesPerSecond();
+        this.readInterval = config.getReadInterval();
         this.listener = Objects.requireNonNull(listener);
         this.lock = new ReentrantLock();
         this.idleChecker = lastModified -> lastModified + idleTimeout < System.currentTimeMillis();
@@ -165,7 +167,7 @@ public class TailerManager {
                 }
                 if (produceLines == 0) {
                     try {
-                        TimeUnit.SECONDS.sleep(1);
+                        TimeUnit.MILLISECONDS.sleep(readInterval);
                     } catch (InterruptedException ignore) {
                     }
                 }
